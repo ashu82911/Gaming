@@ -18,40 +18,33 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Download Gradle Wrapper JAR
+      - name: Install Gradle
         run: |
-          mkdir -p android/gradle/wrapper
-          curl -fsSL \
-            "https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o android/gradle/wrapper/gradle-wrapper.jar
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
+          wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.2/bin" >> $GITHUB_PATH
 
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Install required SDK components
+      - name: Install Android SDK components
         run: |
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-34" \
             "build-tools;34.0.0" \
             "platform-tools"
 
-      - name: Build APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build APK with Gradle
+        run: |
+          gradle assembleDebug --no-daemon --stacktrace
         working-directory: android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PlayAndWin-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
-
-      - name: Show APK info
-        run: |
-          echo "APK built successfully!"
-          ls -lh android/app/build/outputs/apk/debug/
