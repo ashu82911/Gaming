@@ -8,39 +8,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: mingc/android-build-box:latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Install Gradle
+      - name: Generate Gradle Wrapper
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt/gradle
-          echo "/opt/gradle/gradle-8.2/bin" >> $GITHUB_PATH
+          cd android
+          gradle wrapper --gradle-version=8.2 --distribution-type=bin
 
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
-      - name: Install Android SDK components
+      - name: Build Debug APK
         run: |
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "platform-tools"
-
-      - name: Build APK with Gradle
-        run: |
-          gradle assembleDebug --no-daemon --stacktrace
-        working-directory: android
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          cd android
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
