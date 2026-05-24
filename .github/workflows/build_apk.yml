@@ -19,25 +19,158 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.2'
-
-      - name: Accept Android licenses
+      - name: Create Android project from scratch
         run: |
+          # Install Android SDK build tools
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
-      - name: Generate Gradle Wrapper
-        run: |
-          cd android
-          gradle wrapper --gradle-version=8.2
-          chmod +x gradlew
+          # Create fresh project structure
+          mkdir -p PlayAndWin/app/src/main/java/com/playandwin
+          mkdir -p PlayAndWin/app/src/main/res/layout
+          mkdir -p PlayAndWin/app/src/main/res/values
+          mkdir -p PlayAndWin/app/src/main/res/drawable
+          mkdir -p PlayAndWin/gradle/wrapper
 
-      - name: Build Debug APK
+          # settings.gradle
+          cat > PlayAndWin/settings.gradle << 'SETTINGS'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "PlayAndWin"
+          include ':app'
+          SETTINGS
+
+          # root build.gradle
+          cat > PlayAndWin/build.gradle << 'ROOTGRADLE'
+          plugins {
+              id 'com.android.application' version '8.1.0' apply false
+          }
+          ROOTGRADLE
+
+          # app build.gradle
+          cat > PlayAndWin/app/build.gradle << 'APPGRADLE'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.playandwin'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.playandwin"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release { minifyEnabled false }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          APPGRADLE
+
+          # gradle wrapper properties
+          cat > PlayAndWin/gradle/wrapper/gradle-wrapper.properties << 'PROPS'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.1.1-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          PROPS
+
+          # Download gradle wrapper jar
+          curl -fsSL -o PlayAndWin/gradle/wrapper/gradle-wrapper.jar \
+            https://github.com/gradle/gradle/raw/v8.1.1/gradle/wrapper/gradle-wrapper.jar || \
+          curl -fsSL -o PlayAndWin/gradle/wrapper/gradle-wrapper.jar \
+            https://raw.githubusercontent.com/gradle/gradle/v8.1.1/gradle/wrapper/gradle-wrapper.jar
+
+          # gradlew script
+          cat > PlayAndWin/gradlew << 'GRADLEW'
+          #!/bin/sh
+          CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+          exec java -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"
+          GRADLEW
+          chmod +x PlayAndWin/gradlew
+
+          # AndroidManifest
+          cat > PlayAndWin/app/src/main/AndroidManifest.xml << 'MANIFEST'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application
+                  android:label="Play&Win"
+                  android:theme="@style/AppTheme"
+                  android:usesCleartextTraffic="true">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          MANIFEST
+
+          # MainActivity.java
+          cat > PlayAndWin/app/src/main/java/com/playandwin/MainActivity.java << 'JAVA'
+          package com.playandwin;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          public class MainActivity extends Activity {
+              private WebView webView;
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  webView = new WebView(this);
+                  setContentView(webView);
+                  WebSettings s = webView.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setLoadWithOverviewMode(true);
+                  s.setUseWideViewPort(true);
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.loadUrl("https://playandwin-ashu.streamlit.app");
+              }
+              @Override
+              public void onBackPressed() {
+                  if (webView.canGoBack()) webView.goBack();
+                  else super.onBackPressed();
+              }
+          }
+          JAVA
+
+          # themes.xml
+          cat > PlayAndWin/app/src/main/res/values/themes.xml << 'THEMES'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+                  <item name="android:windowBackground">#0f0f1a</item>
+                  <item name="android:statusBarColor">#1a0a2e</item>
+              </style>
+          </resources>
+          THEMES
+
+          # strings.xml
+          cat > PlayAndWin/app/src/main/res/values/strings.xml << 'STRINGS'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources><string name="app_name">Play&amp;Win</string></resources>
+          STRINGS
+
+      - name: Build APK
         run: |
-          cd android
+          cd PlayAndWin
           ./gradlew assembleDebug --no-daemon --stacktrace
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
@@ -46,5 +179,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PlayAndWin-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: PlayAndWin/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
